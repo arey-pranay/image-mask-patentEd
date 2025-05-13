@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>arey-pranay/image-mask-patented</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+
+    h1 {
+      color: #333;
+      text-align: center;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      margin-top: 20px;
+    }
+
+    .upload-container {
+      width: 100%;
+      padding: 20px;
+      background-color: white;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      text-align: center;
+    }
+
+    .canvas-container {
+      position: relative;
+      margin-top: 20px;
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      overflow: hidden;
+      background-color: #f0f0f0;
+      display: none;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    #imageCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      cursor: crosshair;
+    }
+
+    #maskCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      cursor: crosshair;
+      opacity: 0.5;
+    }
+
+    #resultCanvas {
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      margin-top: 20px;
+      display: none;
+    }
+
+    .controls {
+      margin-top: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    button {
+      padding: 10px 15px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background-color 0.3s;
+    }
+
+    button:hover {
+      background-color: #3e8e41;
+    }
+
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+
+    .brush-size {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .custom-file-upload {
+      border: 1px solid #ccc;
+      display: inline-block;
+      padding: 10px 15px;
+      cursor: pointer;
+      background-color: #f9f9f9;
+      border-radius: 5px;
+      transition: background-color 0.3s;
+    }
+
+    .custom-file-upload:hover {
+      background-color: #e9e9e9;
+    }
+
+    .instructions {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #e7f3fe;
+      border-left: 6px solid #2196F3;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Image Masking Tool for PatentƎd</h1>
+
+  <div class="container">
+    <div class="upload-container">
+      <label class="custom-file-upload">
+        <input type="file" id="imageUpload" accept="image/*">
+        Upload an Image
+      </label>
+      <p id="filename">No file selected</p>
+    </div>
+
+    <div class="instructions">
+      <h3>Instructions:</h3>
+      <ol>
+        <li>Upload an image using the button above</li>
+        <li>Draw on the image (black on white mask will be created)</li>
+        <li>Use Clear to start over with the mask</li>
+        <li>Use Show Mask to preview the mask by itself</li>
+        <li>Download the mask when you&apos;re satisfied</li>
+      </ol>
+    </div>
+
+    <div class="canvas-container" id="canvasContainer">
+      <canvas id="imageCanvas"></canvas>
+      <canvas id="maskCanvas"></canvas>
+    </div>
+
+    <div class="controls">
+      <div class="brush-size">
+        <label for="brushSize">Brush Size:</label>
+        <input type="range" id="brushSize" min="5" max="50" value="20">
+        <span id="brushSizeValue">20px</span>
+      </div>
+
+      <button id="clearBtn">Clear Mask</button>
+      <!-- <button id="resetBtn">Reset All</button> -->
+      <button id="showMaskBtn">Show Mask</button>
+      <button id="downloadBtn">Download Mask</button>
+    </div>
+
+    <canvas id="resultCanvas"></canvas>
+  </div>
+
+  <script>
+
+    const imageUpload = document.getElementById('imageUpload');
+    const filenameDisplay = document.getElementById('filename');
+    const canvasContainer = document.getElementById('canvasContainer');
+    const imageCanvas = document.getElementById('imageCanvas');
+    const maskCanvas = document.getElementById('maskCanvas');
+    const resultCanvas = document.getElementById('resultCanvas');
+    const brushSizeInput = document.getElementById('brushSize');
+    const brushSizeValue = document.getElementById('brushSizeValue');
+    const clearBtn = document.getElementById('clearBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const showMaskBtn = document.getElementById('showMaskBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+
+    const imageCtx = imageCanvas.getContext('2d');
+    const maskCtx = maskCanvas.getContext('2d');
+    const resultCtx = resultCanvas.getContext('2d');
+
+
+    let originalImage = null;
+    let isDrawing = false;
+    let brushSize = parseInt(brushSizeInput.value);
+    let maskShown = false;
+
+
+    imageUpload.addEventListener('change', handleImageUpload);
+    maskCanvas.addEventListener('mousedown', startDrawing);
+    maskCanvas.addEventListener('mousemove', draw);
+    maskCanvas.addEventListener('mouseup', stopDrawing);
+    maskCanvas.addEventListener('mouseout', stopDrawing);
+    brushSizeInput.addEventListener('input', updateBrushSize);
+    clearBtn.addEventListener('click', clearMask);
+    resetBtn.addEventListener('click', resetAll);
+    showMaskBtn.addEventListener('click', toggleMaskView);
+    downloadBtn.addEventListener('click', downloadMask);
+
+
+    function handleImageUpload(e) {
+      const file = e.target.files[0];
+      if (file) {
+        filenameDisplay.textContent = file.name;
+
+        const reader = new FileReader();
+        reader.onload = function (event) {
+          originalImage = new Image();
+          originalImage.onload = function () {
+            resetCanvases();
+            setupCanvases();
+            drawImage();
+            canvasContainer.style.display = 'block';
+            resultCanvas.style.display = 'none';
+            maskShown = false;
+            showMaskBtn.textContent = 'Show Mask';
+          };
+          originalImage.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+
+    function setupCanvases() {
+
+      let width = originalImage.width;
+      let height = originalImage.height;
+
+      if (width > 800) {
+        const ratio = 800 / width;
+        width = 800;
+        height = height * ratio;
+      }
+
+      imageCanvas.width = width;
+      imageCanvas.height = height;
+      maskCanvas.width = width;
+      maskCanvas.height = height;
+      resultCanvas.width = width;
+      resultCanvas.height = height;
+
+      canvasContainer.style.width = `${width}px`;
+      canvasContainer.style.height = `${height}px`;
+
+
+      maskCtx.fillStyle = 'white';
+      maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
+    }
+
+
+    function drawImage() {
+      imageCtx.clearRect(0, 0, imageCanvas.width, imageCanvas.height);
+      imageCtx.drawImage(originalImage, 0, 0, imageCanvas.width, imageCanvas.height);
+    }
+
+
+    function startDrawing(e) {
+      isDrawing = true;
+      draw(e);
+    }
+
+    function draw(e) {
+      if (!isDrawing) return;
+
+      const rect = maskCanvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      maskCtx.fillStyle = 'black';
+      maskCtx.beginPath();
+      maskCtx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+      maskCtx.fill();
+    }
+
+    function stopDrawing() {
+      isDrawing = false;
+    }
+
+
+    function updateBrushSize() {
+      brushSize = parseInt(brushSizeInput.value);
+      brushSizeValue.textContent = `${brushSize}px`;
+    }
+
+
+    function clearMask() {
+      maskCtx.fillStyle = 'white';
+      maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
+
+      if (maskShown) {
+
+        resultCtx.fillStyle = 'white';
+        resultCtx.fillRect(0, 0, resultCanvas.width, resultCanvas.height);
+      }
+    }
+
+
+    function resetAll() {
+      clearMask();
+      if (originalImage) {
+        drawImage();
+        resultCanvas.style.display = 'none';
+        maskShown = false;
+        showMaskBtn.textContent = 'Show Mask';
+      } else {
+        resetCanvases();
+        canvasContainer.style.display = 'none';
+        resultCanvas.style.display = 'none';
+        filenameDisplay.textContent = 'No file selected';
+      }
+    }
+
+
+    function resetCanvases() {
+      imageCtx.clearRect(0, 0, imageCanvas.width, imageCanvas.height);
+      maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+      resultCtx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
+    }
+
+
+    function toggleMaskView() {
+      if (!originalImage) return;
+
+      if (!maskShown) {
+
+        resultCanvas.style.display = 'block';
+        resultCtx.fillStyle = 'white';
+        resultCtx.fillRect(0, 0, resultCanvas.width, resultCanvas.height);
+        resultCtx.drawImage(maskCanvas, 0, 0);
+
+        showMaskBtn.textContent = 'Hide Mask';
+        maskShown = true;
+      } else {
+
+        resultCanvas.style.display = 'none';
+        showMaskBtn.textContent = 'Show Mask';
+        maskShown = false;
+      }
+    }
+
+
+    function downloadMask() {
+      if (!originalImage) return;
+
+
+      if (!maskShown) {
+        resultCtx.fillStyle = 'white';
+        resultCtx.fillRect(0, 0, resultCanvas.width, resultCanvas.height);
+        resultCtx.drawImage(maskCanvas, 0, 0);
+      }
+
+      const link = document.createElement('a');
+      link.download = 'mask.png';
+      link.href = resultCanvas.toDataURL('image/png');
+      link.click();
+    }
+
+  </script>
+</body>
+
+</html>
